@@ -1,0 +1,11 @@
+services:
+  lan-share:
+    build: .
+    container_name: lan-share
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped

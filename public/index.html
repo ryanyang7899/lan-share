@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>局域网共享</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-dot"></span>局域网共享</div>
+  <div class="nick">
+    <label for="nick">昵称</label>
+    <input id="nick" maxlength="20" placeholder="匿名" autocomplete="off">
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="board">📋 公告板</button>
+  <button class="tab" data-tab="files">📁 文件</button>
+  <button class="tab" data-tab="chat">💬 聊天</button>
+</nav>
+
+<main>
+  <!-- 公告板 -->
+  <section id="board" class="panel active">
+    <form id="post-form" class="composer">
+      <div class="composer-top">
+        <textarea id="post-content" rows="4" placeholder="写点什么，共享给大家…（Enter 发送，Shift+Enter 换行，支持 Markdown）" maxlength="4000"></textarea>
+        <div id="post-preview" class="md-preview hidden"></div>
+      </div>
+      <div class="composer-row">
+        <div class="md-toggle">
+          <button type="button" class="md-switch active" data-mode="write" data-target="post">输入</button>
+          <button type="button" class="md-switch" data-mode="preview" data-target="post">预览</button>
+        </div>
+        <div class="composer-actions">
+          <select id="post-ttl">
+            <option value="86400">保留 1 天</option>
+            <option value="259200">保留 3 天</option>
+            <option value="604800" selected>保留 7 天</option>
+            <option value="2592000">保留 30 天</option>
+            <option value="0">永久</option>
+          </select>
+          <button type="submit" class="primary">发布</button>
+        </div>
+      </div>
+    </form>
+    <ul id="post-list" class="list"></ul>
+  </section>
+
+  <!-- 文件 -->
+  <section id="files" class="panel">
+    <div id="dropzone" class="dropzone">
+      <div class="dz-text">把文件拖到这里，或点击选择</div>
+      <input type="file" id="file-input" multiple hidden>
+      <div class="composer-row">
+        <select id="file-ttl">
+          <option value="86400">保留 1 天</option>
+          <option value="259200">保留 3 天</option>
+          <option value="604800" selected>保留 7 天</option>
+          <option value="2592000">保留 30 天</option>
+          <option value="0">永久</option>
+        </select>
+      </div>
+    </div>
+    <div id="upload-progress" class="progress hidden">
+      <div class="progress-label" id="upload-progress-label">上传中…</div>
+      <div class="progress-track"><div class="progress-bar" id="upload-progress-bar"></div></div>
+    </div>
+    <ul id="file-list" class="list"></ul>
+  </section>
+
+  <!-- 聊天 -->
+  <section id="chat" class="panel">
+    <div id="chat-box" class="chat-box"></div>
+    <form id="chat-form" class="composer">
+      <div class="composer-top">
+        <textarea id="chat-input" rows="1" maxlength="4000" placeholder="回车发送，Shift+Enter 换行，支持 Markdown…"></textarea>
+        <div id="chat-preview" class="md-preview hidden"></div>
+      </div>
+      <div class="composer-row">
+        <div class="md-toggle">
+          <button type="button" class="md-switch active" data-mode="write" data-target="chat">输入</button>
+          <button type="button" class="md-switch" data-mode="preview" data-target="chat">预览</button>
+        </div>
+        <div class="composer-actions">
+          <select id="chat-ttl">
+            <option value="0" selected>永不过期</option>
+            <option value="86400">保留 1 天</option>
+            <option value="259200">保留 3 天</option>
+            <option value="604800">保留 7 天</option>
+            <option value="2592000">保留 30 天</option>
+          </select>
+          <button type="submit" class="primary">发送</button>
+        </div>
+      </div>
+    </form>
+  </section>
+</main>
+
+<script src="/vendor/marked.umd.js"></script>
+<script src="/vendor/purify.js"></script>
+<script src="/md.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
