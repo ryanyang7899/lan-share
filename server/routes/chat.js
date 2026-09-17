@@ -1,7 +1,7 @@
 'use strict';
 
 const { db } = require('../db');
-const { NICK_MAX, CONTENT_MAX } = require('../config');
+const { CONTENT_MAX } = require('../config');
 
 const clients = new Set();
 
@@ -37,7 +37,20 @@ function removeExpiredMessages() {
 }
 
 function chatRoute(app) {
-  app.get('/api/chat', { websocket: true }, (socket) => {
+  // 第二个参数 req 由 @fastify/websocket 传入，鉴权钩子已把登录用户挂在 req.user 上
+  app.get('/api/chat', { websocket: true }, (socket, req) => {
+    const me = req.user;
+    if (!me) {
+      socket.close();
+      return;
+    }
+    // 管理员可操作任意消息，子账户仅限自己的
+    const canModify = (id) => {
+      const row = db.prepare('SELECT author FROM messages WHERE id = ?').get(id);
+      if (!row) return false;
+      return me.role === 'admin' || row.author === me.username;
+    };
+
     // 进房：先补最近 50 条未过期历史
     const history = db
       .prepare('SELECT * FROM messages WHERE expires_at IS NULL OR expires_at > ? ORDER BY created_at DESC LIMIT 50')
@@ -59,7 +72,7 @@ function chatRoute(app) {
       // 撤回：从数据库彻底删除该消息并广播，所有客户端移除展示
       if (msg.type === 'recall') {
         const id = Number(msg.id);
-        if (Number.isInteger(id) && id > 0) {
+        if (Number.isInteger(id) && id > 0 && canModify(id)) {
           const info = db.prepare('DELETE FROM messages WHERE id = ?').run(id);
           if (info.changes > 0) broadcast({ type: 'recalled', id });
         }
@@ -70,6 +83,7 @@ function chatRoute(app) {
       if (msg.type === 'ttl') {
         const id = Number(msg.id);
         if (!(Number.isInteger(id) && id > 0)) return;
+        if (!canModify(id)) return;
         const ttl = parseTTL(msg.ttl);
         const expires_at = ttl ? Date.now() + ttl * 1000 : null;
         const info = db.prepare('UPDATE messages SET expires_at = ? WHERE id = ?').run(expires_at, id);
@@ -82,7 +96,7 @@ function chatRoute(app) {
       const content = String(msg.content || '').trim().slice(0, CONTENT_MAX);
       if (!content) return;
 
-      const author = String(msg.author || '匿名').trim().slice(0, NICK_MAX) || '匿名';
+      const author = me.username; // 昵称与账户绑定，忽略客户端自报的 author
       const created_at = Date.now();
       const ttl = parseTTL(msg.ttl);
       const expires_at = ttl ? created_at + ttl * 1000 : null;

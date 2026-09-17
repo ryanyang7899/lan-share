@@ -1,11 +1,8 @@
 'use strict';
 
 const { db } = require('../db');
-const { NICK_MAX, CONTENT_MAX } = require('../config');
+const { CONTENT_MAX } = require('../config');
 
-function parseAuthor(raw) {
-  return String(raw || '匿名').trim().slice(0, NICK_MAX) || '匿名';
-}
 function parseContent(raw) {
   return String(raw || '').trim().slice(0, CONTENT_MAX);
 }
@@ -13,6 +10,10 @@ function parseContent(raw) {
 function parseTTL(raw) {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+// 管理员可改任意内容，子账户仅限自己发布的
+function canModify(req, row) {
+  return req.user.role === 'admin' || row.author === req.user.username;
 }
 
 async function postsRoutes(app) {
@@ -29,7 +30,7 @@ async function postsRoutes(app) {
     const content = parseContent(body.content);
     if (!content) return reply.code(400).send({ error: '内容不能为空' });
 
-    const author = parseAuthor(body.author);
+    const author = req.user.username; // 昵称与账户绑定，忽略客户端自报的 author
     const created_at = Date.now();
     const ttl = parseTTL(body.ttl);
     const expires_at = ttl ? created_at + ttl * 1000 : null;
@@ -51,6 +52,7 @@ async function postsRoutes(app) {
   app.patch('/api/posts/:id', async (req, reply) => {
     const row = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
     if (!row) return reply.code(404).send({ error: '公告不存在' });
+    if (!canModify(req, row)) return reply.code(403).send({ error: '只能修改自己发布的公告' });
 
     const body = req.body || {};
     const ttl = parseTTL(body.ttl);
@@ -60,10 +62,14 @@ async function postsRoutes(app) {
     return { id: row.id, expires_at };
   });
 
-  // 删除一条
+  // 删除一条（管理员可删任意，子账户仅限自己发布的）
   app.delete('/api/posts/:id', async (req, reply) => {
-    const info = db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
-    return { ok: info.changes > 0 };
+    const row = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+    if (!row) return reply.code(404).send({ error: '公告不存在' });
+    if (!canModify(req, row)) return reply.code(403).send({ error: '只能删除自己发布的公告' });
+
+    db.prepare('DELETE FROM posts WHERE id = ?').run(row.id);
+    return { ok: true };
   });
 }
 

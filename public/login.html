@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 局域网共享</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="login-brand"><span class="brand-dot"></span>局域网共享</div>
+  <p class="login-sub">请登录后使用</p>
+
+  <form id="login-form" autocomplete="on">
+    <label class="field">
+      <span>账户名</span>
+      <input id="login-user" name="username" type="text" autocomplete="username" maxlength="20" required autofocus>
+    </label>
+    <label class="field">
+      <span>密码</span>
+      <input id="login-pass" name="password" type="password" autocomplete="current-password" required>
+    </label>
+
+    <div id="login-msg" class="login-msg hidden"></div>
+
+    <button type="submit" class="primary login-btn" id="login-btn">登录</button>
+  </form>
+</div>
+<script src="/login.js"></script>
+</body>
+</html>

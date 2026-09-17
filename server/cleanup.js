@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const { db, UPLOADS_DIR } = require('./db');
 const { CLEANUP_INTERVAL } = require('./config');
 const { removeExpiredMessages } = require('./routes/chat');
+const { cleanupAuth } = require('./auth');
 
 // 删除过期记录与对应磁盘文件，返回删除数量
 function cleanupOnce() {
@@ -41,12 +42,14 @@ function cleanupOnce() {
     removedFiles = rows.length;
   }
 
+  const auth = cleanupAuth(); // 过期会话 + 冷却结束的锁定记录
+
   if (removedPosts + removedFiles + removedMessages > 0) {
     console.log(
       `[cleanup] 已清理：公告板 ${removedPosts} 条，聊天消息 ${removedMessages} 条，文件 ${removedFiles} 个`
     );
   }
-  return { removedPosts, removedFiles, removedMessages };
+  return { removedPosts, removedFiles, removedMessages, ...auth };
 }
 
 function startCleanup() {

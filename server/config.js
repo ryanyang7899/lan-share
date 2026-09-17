@@ -13,4 +13,19 @@ module.exports = {
   NICK_MAX: 20,
   // 文字内容最大长度
   CONTENT_MAX: 4000,
+
+  // ---------- 认证 ----------
+  // 会话有效期：7 天
+  SESSION_TTL: 7 * 24 * 3600 * 1000,
+  // 会话 Cookie 名
+  SESSION_COOKIE: 'ls_session',
+  // 同一 IP 连续登录失败达到该次数即锁定
+  LOGIN_MAX_FAILS: 5,
+  // 锁定时长：24 小时
+  LOGIN_LOCK_MS: 24 * 3600 * 1000,
+  // 首次启动自动创建的管理员账户（可用环境变量覆盖）
+  DEFAULT_ADMIN: {
+    username: process.env.DEFAULT_ADMIN_USER || 'Ryan',
+    password: process.env.DEFAULT_ADMIN_PASS || 'asDF1314',
+  },
 };

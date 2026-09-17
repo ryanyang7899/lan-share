@@ -169,14 +169,50 @@ const fmtExpire = (expires_at) => {
   return `${Math.max(1, m)} 分钟后过期`;
 };
 
-// ---------- 昵称（localStorage 记忆） ----------
-const NICK_KEY = 'lan-share:nick';
-function getNick() {
-  return $('#nick').value.trim() || '匿名';
+// ---------- 当前登录用户（昵称与账户硬绑定，不可自行修改） ----------
+let ME = { username: '', role: 'user' };
+const getNick = () => ME.username;
+const isAdmin = () => ME.role === 'admin';
+// 管理员可操作任意内容，子账户仅限自己发布的
+const canModify = (author) => isAdmin() || author === ME.username;
+
+// 统一的请求封装：会话失效（401）时直接回登录页
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    location.href = '/login.html';
+    throw new Error('未登录');
+  }
+  return res;
 }
-$('#nick').value = localStorage.getItem(NICK_KEY) || '';
-$('#nick').addEventListener('change', (e) => {
-  localStorage.setItem(NICK_KEY, e.target.value.trim());
+
+async function loadMe() {
+  try {
+    const res = await fetch('/api/me');
+    if (!res.ok) {
+      location.href = '/login.html';
+      return false;
+    }
+    ME = await res.json();
+  } catch {
+    location.href = '/login.html';
+    return false;
+  }
+  $('#me-name').textContent = ME.username;
+  if (isAdmin()) {
+    // 管理员专属区块（新增子账户 / 账户列表 / 锁定 IP）
+    document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
+  }
+  return true;
+}
+
+$('#logout-btn').addEventListener('click', async () => {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch {
+    /* 忽略：无论成功与否都回登录页 */
+  }
+  location.href = '/login.html';
 });
 
 // ---------- Tab 切换 ----------
@@ -194,27 +230,28 @@ const postList = $('#post-list');
 
 async function loadPosts() {
   try {
-    const res = await fetch('/api/posts');
+    const res = await api('/api/posts');
     const posts = await res.json();
     postList.innerHTML =
       posts
-        .map(
-          (p) => `
+        .map((p) => {
+          const mine = canModify(p.author);
+          return `
       <li class="item" data-id="${p.id}" data-expires="${p.expires_at || ''}">
         <div class="item-head">
           <span class="author">${esc(p.author)}</span>
           <div class="item-head-right">
             <span class="meta">${fmtTime(p.created_at)}</span>
-            <select class="post-ttl" data-post-ttl="${p.id}" title="设置过期时限">${ttlOptionsHTML(p)}</select>
+            ${mine ? `<select class="post-ttl" data-post-ttl="${p.id}" title="设置过期时限">${ttlOptionsHTML(p)}</select>` : ''}
           </div>
         </div>
         <div class="item-body">${md(p.content)}</div>
         <div class="item-actions">
           <button class="link" data-copy-text data-src="${esc(p.content)}">复制</button>
-          <button class="link del" data-del-post="${p.id}">删除</button>
+          ${mine ? `<button class="link del" data-del-post="${p.id}">删除</button>` : ''}
         </div>
-      </li>`
-        )
+      </li>`;
+        })
         .join('') || '<li class="empty">暂无内容</li>';
     postList.querySelectorAll('.item-body').forEach((el) => {
       applyCollapse(el, 400); // 超长公告折叠
@@ -230,7 +267,7 @@ async function loadPosts() {
       sel.addEventListener('change', async () => {
         const id = Number(sel.dataset.postTtl);
         const ttl = Number(sel.value) || null; // 0 = 永久
-        await fetch(`/api/posts/${id}`, {
+        await api(`/api/posts/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ttl }),
@@ -240,7 +277,7 @@ async function loadPosts() {
     });
     postList.querySelectorAll('[data-del-post]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        await fetch(`/api/posts/${btn.dataset.delPost}`, { method: 'DELETE' });
+        await api(`/api/posts/${btn.dataset.delPost}`, { method: 'DELETE' });
         loadPosts();
       });
     });
@@ -265,10 +302,11 @@ $('#post-form').addEventListener('submit', async (e) => {
   const content = $('#post-content').value.trim();
   if (!content) return;
   const ttl = Number($('#post-ttl').value) || null;
-  await fetch('/api/posts', {
+  // 作者由服务端按登录会话确定，前端不传昵称
+  await api('/api/posts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ author: getNick(), content, ttl }),
+    body: JSON.stringify({ content, ttl }),
   });
   $('#post-content').value = '';
   postMd.showWrite();
@@ -277,9 +315,7 @@ $('#post-form').addEventListener('submit', async (e) => {
 bindEnterSubmit($('#post-content')); // 公告板：Enter 发送，Shift+Enter 换行
 const postMd = bindMdToggle($('#post-content'), $('#post-preview')); // 公告板：Markdown 预览
 
-postList.innerHTML = '<li class="loading">加载中…</li>';
-loadPosts();
-setInterval(loadPosts, 10000); // 轮询刷新
+// 启动时统一加载（见文件末尾 init）
 
 // ---------- 文件 ----------
 const fileList = $('#file-list');
@@ -288,12 +324,13 @@ const progress = $('#upload-progress');
 
 async function loadFiles() {
   try {
-    const res = await fetch('/api/files');
+    const res = await api('/api/files');
     const files = await res.json();
     fileList.innerHTML =
       files
-        .map(
-          (f) => `
+        .map((f) => {
+          const mine = canModify(f.uploader);
+          return `
       <li class="item">
         <div class="item-head">
           <span class="author">📄 ${esc(f.name)}</span>
@@ -304,10 +341,10 @@ async function loadFiles() {
         <div class="item-actions">
           <a class="link" href="/files/${f.id}/download" download>下载</a>
           <button class="link" data-copy="${location.origin}/files/${f.id}/download">复制直链</button>
-          <button class="link del" data-del-file="${f.id}">删除</button>
+          ${mine ? `<button class="link del" data-del-file="${f.id}">删除</button>` : ''}
         </div>
-      </li>`
-        )
+      </li>`;
+        })
         .join('') || '<li class="empty">暂无文件</li>';
     fileList.querySelectorAll('[data-copy]').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -318,7 +355,7 @@ async function loadFiles() {
     });
     fileList.querySelectorAll('[data-del-file]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        await fetch(`/api/files/${btn.dataset.delFile}`, { method: 'DELETE' });
+        await api(`/api/files/${btn.dataset.delFile}`, { method: 'DELETE' });
         loadFiles();
       });
     });
@@ -344,10 +381,10 @@ async function uploadFiles(fileListArg) {
   for (const file of fileListArg) {
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('uploader', getNick());
+    // 上传者由服务端按登录会话确定，前端不传昵称
     if (ttl) fd.append('ttl', String(ttl));
     try {
-      await fetch('/api/files', { method: 'POST', body: fd });
+      await api('/api/files', { method: 'POST', body: fd });
     } catch (e) {
       /* 单个失败继续 */
     }
@@ -380,8 +417,7 @@ $('#file-input').addEventListener('change', (e) => {
 );
 dropzone.addEventListener('drop', (e) => uploadFiles([...e.dataTransfer.files]));
 
-fileList.innerHTML = '<li class="loading">加载中…</li>';
-loadFiles();
+// 启动时统一加载（见文件末尾 init）
 
 // ---------- 聊天 ----------
 const chatBox = $('#chat-box');
@@ -396,16 +432,17 @@ const autoGrow = (el) => {
 };
 chatInput.addEventListener('input', () => autoGrow(chatInput));
 function msgHTML(m) {
-  const mine = m.author === getNick(); // 只有自己的消息可设置时限
+  const mine = canModify(m.author); // 自己的消息（或管理员）可设置时限/撤回
   const ttlSel = mine
     ? `<select class="chat-ttl" data-chat-ttl="${m.id}" title="设置过期时限">${ttlOptionsHTML(m)}</select>`
     : '';
+  const recallBtn = mine ? `<button class="link del recall" data-recall="${m.id}">撤回</button>` : '';
   return `<div class="chat-msg" data-id="${m.id}" data-created="${m.created_at}">
     <div class="chat-head">
       <span class="author">${esc(m.author)}</span>
       <span class="chat-time">${fmtTime(m.created_at)}</span>
       ${ttlSel}
-      <button class="link del recall" data-recall="${m.id}">撤回</button>
+      ${recallBtn}
     </div>
     <div class="chat-body">${md(m.content)}</div>
   </div>`;
@@ -529,7 +566,8 @@ $('#chat-form').addEventListener('submit', (e) => {
   // 消息由服务端广播回所有客户端（含自己），无需本地预渲染
   if (ws && ws.readyState === 1) {
     const ttl = Number($('#chat-ttl').value) > 0 ? Number($('#chat-ttl').value) : null;
-    ws.send(JSON.stringify({ type: 'message', author: getNick(), content, ttl }));
+    // 作者由服务端按登录会话确定，前端不传昵称
+    ws.send(JSON.stringify({ type: 'message', content, ttl }));
     chatInput.value = '';
     chatMd.showWrite();
     autoGrow(chatInput);
@@ -538,4 +576,156 @@ $('#chat-form').addEventListener('submit', (e) => {
 bindEnterSubmit(chatInput); // 聊天：Enter 发送，Shift+Enter 换行
 const chatMd = bindMdToggle(chatInput, $('#chat-preview')); // 聊天：Markdown 预览
 
-connectChat();
+// ---------- 账户 ----------
+function showFormMsg(el, text, ok) {
+  el.textContent = text;
+  el.className = `form-msg ${ok ? 'ok' : 'error'}`;
+}
+
+// 修改自己的密码
+$('#self-pass-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msgEl = $('#self-msg');
+  const oldPassword = $('#old-pass').value;
+  const newPassword = $('#new-pass').value;
+  try {
+    const res = await api('/api/me/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPassword, newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return showFormMsg(msgEl, data.error || '修改失败', false);
+    showFormMsg(msgEl, '密码已修改', true);
+    $('#old-pass').value = '';
+    $('#new-pass').value = '';
+  } catch {
+    /* 401 已由 api() 跳转处理 */
+  }
+});
+
+// 管理员：账户列表
+async function loadUsers() {
+  if (!isAdmin()) return;
+  const list = $('#user-list');
+  try {
+    const res = await api('/api/users');
+    const users = await res.json();
+    list.innerHTML =
+      users
+        .map((u) => {
+          const isMe = u.username === ME.username;
+          return `
+      <li class="item" data-uid="${u.id}">
+        <div class="item-head">
+          <span class="author">${esc(u.username)}${u.role === 'admin' ? ' <span class="tag">管理员</span>' : ''}${isMe ? ' <span class="tag">当前</span>' : ''}</span>
+          <span class="meta">${fmtTime(u.created_at)}</span>
+        </div>
+        <div class="item-actions">
+          <button class="link" data-reset-user="${u.id}" data-name="${esc(u.username)}">重置密码</button>
+          ${isMe ? '' : `<button class="link del" data-del-user="${u.id}" data-name="${esc(u.username)}">删除</button>`}
+        </div>
+      </li>`;
+        })
+        .join('') || '<li class="empty">暂无子账户</li>';
+
+    list.querySelectorAll('[data-del-user]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`确定删除账户「${btn.dataset.name}」？该账户将立即无法登录。`)) return;
+        await api(`/api/users/${btn.dataset.delUser}`, { method: 'DELETE' });
+        loadUsers();
+      });
+    });
+    list.querySelectorAll('[data-reset-user]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const pwd = prompt(`为「${btn.dataset.name}」设置新密码（4-128 位）：`);
+        if (!pwd) return;
+        const res = await api(`/api/users/${btn.dataset.resetUser}/password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newPassword: pwd }),
+        });
+        const data = await res.json().catch(() => ({}));
+        showFormMsg($('#user-msg'), res.ok ? `已重置「${btn.dataset.name}」的密码` : data.error || '重置失败', res.ok);
+      });
+    });
+  } catch {
+    list.innerHTML = '<li class="error-state">加载失败</li>';
+  }
+}
+
+// 管理员：新增子账户
+$('#user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msgEl = $('#user-msg');
+  const username = $('#new-username').value.trim();
+  const password = $('#new-password').value;
+  if (!username) return showFormMsg(msgEl, '账户名不能为空', false);
+
+  try {
+    const res = await api('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return showFormMsg(msgEl, data.error || '添加失败', false);
+    showFormMsg(msgEl, `已添加账户「${data.username}」`, true);
+    $('#new-username').value = '';
+    $('#new-password').value = '';
+    loadUsers();
+  } catch {
+    /* 401 已处理 */
+  }
+});
+
+// 管理员：被锁定的 IP
+async function loadLockedIps() {
+  if (!isAdmin()) return;
+  const list = $('#locked-list');
+  try {
+    const res = await api('/api/locked-ips');
+    const rows = await res.json();
+    list.innerHTML =
+      rows
+        .map(
+          (r) => `
+      <li class="item" data-ip="${esc(r.ip)}">
+        <div class="item-head">
+          <span class="author">${esc(r.ip)}</span>
+          <span class="meta">${fmtExpire(r.locked_until)}</span>
+        </div>
+        <div class="item-actions">
+          <button class="link" data-unlock="${esc(r.ip)}">解除锁定</button>
+        </div>
+      </li>`
+        )
+        .join('') || '<li class="empty">当前没有被锁定的 IP</li>';
+
+    list.querySelectorAll('[data-unlock]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        await api(`/api/locked-ips/${encodeURIComponent(btn.dataset.unlock)}`, { method: 'DELETE' });
+        loadLockedIps();
+      });
+    });
+  } catch {
+    list.innerHTML = '<li class="error-state">加载失败</li>';
+  }
+}
+
+// ---------- 启动 ----------
+(async function init() {
+  // 未登录时 loadMe 会把页面重定向到登录页，后续请求不再发起
+  if (!(await loadMe())) return;
+
+  postList.innerHTML = '<li class="loading">加载中…</li>';
+  loadPosts();
+  setInterval(loadPosts, 10000); // 轮询刷新
+
+  fileList.innerHTML = '<li class="loading">加载中…</li>';
+  loadFiles();
+
+  loadUsers();
+  loadLockedIps();
+  connectChat();
+})();

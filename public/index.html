@@ -9,9 +9,9 @@
 <body>
 <header>
   <div class="brand"><span class="brand-dot"></span>局域网共享</div>
-  <div class="nick">
-    <label for="nick">昵称</label>
-    <input id="nick" maxlength="20" placeholder="匿名" autocomplete="off">
+  <div class="user-area">
+    <span class="me-badge" id="me-name" title="昵称与账户绑定">…</span>
+    <button type="button" class="link" id="logout-btn">登出</button>
   </div>
 </header>
 
@@ -19,6 +19,7 @@
   <button class="tab active" data-tab="board">📋 公告板</button>
   <button class="tab" data-tab="files">📁 文件</button>
   <button class="tab" data-tab="chat">💬 聊天</button>
+  <button class="tab" data-tab="accounts">👤 账户</button>
 </nav>
 
 <main>
@@ -96,6 +97,43 @@
         </div>
       </div>
     </form>
+  </section>
+
+  <!-- 账户 -->
+  <section id="accounts" class="panel">
+    <!-- 所有登录用户：修改自己的密码 -->
+    <div class="card">
+      <h3 class="card-title">修改我的密码</h3>
+      <form id="self-pass-form" class="inline-form">
+        <input id="old-pass" type="password" placeholder="原密码" autocomplete="current-password" required>
+        <input id="new-pass" type="password" placeholder="新密码（4-128 位）" autocomplete="new-password" required>
+        <button type="submit" class="primary">修改</button>
+      </form>
+      <div id="self-msg" class="form-msg hidden"></div>
+    </div>
+
+    <!-- 仅管理员：子账户管理 -->
+    <div class="card admin-only hidden">
+      <h3 class="card-title">新增子账户</h3>
+      <p class="card-hint">账户名将作为该用户在公告板 / 聊天 / 文件中的昵称，创建后不可更改。</p>
+      <form id="user-form" class="inline-form">
+        <input id="new-username" maxlength="20" placeholder="账户名（同时作为昵称）" required>
+        <input id="new-password" type="password" placeholder="密码（4-128 位）" required>
+        <button type="submit" class="primary">添加</button>
+      </form>
+      <div id="user-msg" class="form-msg hidden"></div>
+    </div>
+
+    <div class="card admin-only hidden">
+      <h3 class="card-title">账户列表</h3>
+      <ul id="user-list" class="list"></ul>
+    </div>
+
+    <div class="card admin-only hidden">
+      <h3 class="card-title">已锁定的 IP</h3>
+      <p class="card-hint">同一 IP 连续登录失败 5 次会被锁定 24 小时，可在此手动解锁。</p>
+      <ul id="locked-list" class="list"></ul>
+    </div>
   </section>
 </main>
 

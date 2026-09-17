@@ -6,7 +6,12 @@ const { pipeline } = require('node:stream/promises');
 const { randomUUID } = require('node:crypto');
 
 const { db, UPLOADS_DIR } = require('../db');
-const { MAX_UPLOAD_MB, NICK_MAX } = require('../config');
+const { MAX_UPLOAD_MB } = require('../config');
+
+// 管理员可删任意文件，子账户仅限自己上传的
+function canModify(req, row) {
+  return req.user.role === 'admin' || row.uploader === req.user.username;
+}
 
 // 清理文件名里的路径与危险字符，仅用于落盘与展示
 function safeName(name) {
@@ -26,8 +31,7 @@ async function filesRoutes(app) {
   app.post('/api/files', async (req, reply) => {
     const data = await req.file({ limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
 
-    const uploader =
-      String((data.fields.uploader && data.fields.uploader.value) || '匿名').trim().slice(0, NICK_MAX) || '匿名';
+    const uploader = req.user.username; // 昵称与账户绑定，忽略客户端自报的 uploader
     const ttlRaw = data.fields.ttl && data.fields.ttl.value;
     const ttl = Number(ttlRaw) > 0 ? Number(ttlRaw) : null;
 
@@ -72,10 +76,13 @@ async function filesRoutes(app) {
     if (!fs.existsSync(abs)) return reply.code(404).send({ error: '文件已从磁盘丢失' });
 
     const encName = encodeURIComponent(row.name);
+    // filename* 走 RFC5987（UTF-8 百分号编码，支持中文），filename 回退必须只含 ASCII，
+    // 否则 Fastify 对 content-disposition 里的原始非 ASCII 字符抛 ERR_INVALID_CHAR（500）。
+    const fallback = row.name.replace(/[^\x20-\x7e]/g, '_').slice(0, 150) || 'download';
     reply
       .header('Content-Type', row.mime || 'application/octet-stream')
       .header('Content-Length', row.size)
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encName}; filename="${row.name}"`);
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encName}; filename="${fallback}"`);
 
     return reply.send(fs.createReadStream(abs));
   });
@@ -84,6 +91,7 @@ async function filesRoutes(app) {
   app.delete('/api/files/:id', async (req, reply) => {
     const row = db.prepare('SELECT * FROM files WHERE id = ?').get(req.params.id);
     if (!row) return reply.code(404).send({ error: '文件不存在' });
+    if (!canModify(req, row)) return reply.code(403).send({ error: '只能删除自己上传的文件' });
 
     fs.rmSync(path.join(UPLOADS_DIR, row.path), { force: true });
     db.prepare('DELETE FROM files WHERE id = ?').run(row.id);
