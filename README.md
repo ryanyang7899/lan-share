@@ -50,7 +50,7 @@ docker compose up -d --build
 
 | 账户名 | 密码 |
 |---|---|
-| `Ryan` | `asDF1314` |
+| `admin` | `Abc@123` |
 
 > ⚠️ **部署后请立刻登录，在「👤 账户」页修改管理员密码。** 默认密码是公开写在仓库里的，不改等于没有防护。
 > 也可以用环境变量 `DEFAULT_ADMIN_USER` / `DEFAULT_ADMIN_PASS` 覆盖默认值（仅在数据库里没有任何账户时生效）。
